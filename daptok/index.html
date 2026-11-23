@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!-- 모바일에서 보는 사람이 대부분이다. 이 줄이 없으면 데스크톱 폭으로
+     렌더링된 뒤 축소돼서, 글자가 읽을 수 없게 작아진다. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>답톡 - 카톡 분석</title>
+<meta name="description" content="카톡 대화를 읽고 상대의 관심도와 다음 답장을 알려드립니다. 스크린샷은 저장하지 않습니다.">
+<!-- 카톡이나 문자로 링크를 보낼 때 뜨는 미리보기. 없으면 주소만 덩그러니
+     나와서 아무도 누르지 않는다. -->
+<meta property="og:title" content="답톡 - 카톡 분석">
+<meta property="og:description" content="ㅋ 갯수부터 읽습니다. 상대의 관심도와 다음 답장을 알려드립니다.">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* 레이아웃: 단 하나의 세로 흐름. 읽는 순서가 곧 설득 순서다.
+     ㅋ 눈금 → 무엇을 주는가 → 안 하는 것 → 개인정보 → 지금 상태. */
+  :root {
+    --bg:        #FBFAF8;
+    --surface:   #FFFFFF;
+    --ink:       #16171C;
+    --ink-mid:   #5A5F6B;
+    --ink-low:   #8D93A1;
+    --line:      #E7E4DE;
+    --accent:    #D4533E;
+    --accent-dim:#FBEDEA;
+    --them:      #EFECE6;
+    --me:        #16171C;
+    --font-display: "Gothic A1", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-body: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0F1014; --surface:#17181E; --ink:#F2F0EC; --ink-mid:#A3A8B4;
+      --ink-low:#70757F; --line:#2A2C34; --accent:#F07259; --accent-dim:#2A1A17;
+      --them:#23252D; --me:#F07259; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0F1014; --surface:#17181E; --ink:#F2F0EC; --ink-mid:#A3A8B4;
+    --ink-low:#70757F; --line:#2A2C34; --accent:#F07259; --accent-dim:#2A1A17;
+    --them:#23252D; --me:#F07259; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
+         font-size: 16px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto;
+          padding-left: max(16px, env(safe-area-inset-left, 0px));
+          padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance;
+               letter-spacing: -0.02em; margin: 0; line-height: 1.3; }
+  h1 { font-size: clamp(2rem, 7vw, 3.1rem); font-weight: 800; letter-spacing: -0.035em; }
+  h2 { font-size: clamp(1.3rem, 4vw, 1.65rem); font-weight: 700; }
+  h3 { font-size: 1.05rem; font-weight: 700; }
+  p { margin: 0; }
+
+  .hero { margin-top: calc(-1 * env(safe-area-inset-top, 0px));
+          padding-top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
+          padding-bottom: 3.5rem; }
+  .mark { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem;
+          letter-spacing: -0.03em; display: flex; align-items: center; gap: .5rem;
+          margin-bottom: 3.5rem; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .lede { margin-top: 1.25rem; font-size: 1.1rem; color: var(--ink-mid); max-width: 30em; }
+
+  section { padding-block: 3.25rem; border-top: 1px solid var(--line); }
+  .eyebrow { font-family: var(--font-display); font-size: .78rem; font-weight: 700;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+             margin-bottom: .9rem; }
+  .body { margin-top: 1rem; color: var(--ink-mid); }
+
+  /* ㅋ 눈금 — 이 제품만 가질 수 있는 디테일이다. 한국 사람은 전부 알지만
+     아무도 글로 적어두지 않은 것. 여기서 제품을 설명하는 게 가장 빠르다. */
+  .scale { margin-top: 1.5rem; display: grid; gap: 1px; background: var(--line);
+           border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 7.5rem 1fr; gap: 1rem;
+         background: var(--surface); padding: .85rem 1.1rem; align-items: baseline; }
+  .row b { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;
+           letter-spacing: -.02em; }
+  .row span { color: var(--ink-mid); font-size: .92rem; line-height: 1.6; }
+  .row.hot b { color: var(--accent); }
+  @media (max-width: 460px) {
+    .row { grid-template-columns: 1fr; gap: .15rem; }
+  }
+
+  .note { margin-top: 1.1rem; font-size: .92rem; color: var(--ink-low);
+          border-left: 2px solid var(--accent); padding-left: .9rem; line-height: 1.7; }
+  .note b { color: var(--ink-mid); }
+
+  /* 대화 예시 */
+  .chat { margin-top: 1.5rem; background: var(--surface); border: 1px solid var(--line);
+          border-radius: 14px; padding: 1.1rem; display: flex; flex-direction: column;
+          gap: .45rem; }
+  .b { max-width: 78%; padding: .55rem .85rem; border-radius: 14px; font-size: .93rem;
+       line-height: 1.55; width: fit-content; }
+  .b.them { background: var(--them); color: var(--ink); border-bottom-left-radius: 4px; }
+  .b.me { background: var(--me); color: var(--bg); align-self: flex-end;
+          border-bottom-right-radius: 4px; }
+  .time { font-size: .72rem; color: var(--ink-low); align-self: center;
+          padding-block: .3rem; }
+
+  .cards { margin-top: 1.5rem; display: grid; gap: 1rem;
+           grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+          padding: 1.2rem; min-width: 0; }
+  .card p { margin-top: .5rem; font-size: .92rem; color: var(--ink-mid); line-height: 1.7; }
+  .card p b { color: var(--ink); }
+
+  ul.plain { margin: 1rem 0 0; padding: 0; list-style: none; display: grid; gap: .6rem; }
+  ul.plain li { padding-left: 1.4rem; position: relative; color: var(--ink-mid);
+                font-size: .95rem; }
+  ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--ink-low); }
+  ul.plain li b { color: var(--ink); font-weight: 700; }
+
+  .status { background: var(--accent-dim); border-radius: 14px; padding: 1.4rem 1.3rem;
+            margin-top: 1.5rem; }
+  .status h3 { color: var(--accent); }
+  .status p { margin-top: .55rem; font-size: .95rem; color: var(--ink-mid); }
+  .status p b { color: var(--ink); }
+
+  footer { border-top: 1px solid var(--line); padding-block: 2.5rem 3.5rem;
+           font-size: .88rem; color: var(--ink-low); display: grid; gap: .5rem; }
+  footer a { color: var(--ink-mid); text-decoration: underline;
+             text-underline-offset: 3px; text-decoration-color: var(--line); }
+  footer a:hover { color: var(--accent); }
+  .mailrow { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  code.mail { font-family: var(--font-body); background: var(--surface);
+              border: 1px solid var(--line); border-radius: 6px; padding: .18rem .45rem;
+              font-size: .86rem; color: var(--ink-mid); user-select: all; }
+  button.copy { font: inherit; font-size: .8rem; background: none; cursor: pointer;
+                border: 1px solid var(--line); border-radius: 6px; padding: .18rem .55rem;
+                color: var(--ink-mid); }
+  button.copy:hover { border-color: var(--accent); color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="mark"><span class="dot"></span>답톡</div>
+    <h1>ㅋㅋㅋㅋ가<br>ㅋㅋ로 줄었다면,<br>그건 신호입니다.</h1>
+    <p class="lede">
+      답톡은 카카오톡 대화 캡처를 읽고, 상대가 지금 어떤 상태인지와
+      보낼 수 있는 답장 세 가지를 알려드립니다.
+    </p>
+  </header>
+
+  <section>
+    <div class="eyebrow">읽는 방식</div>
+    <h2>한국어는 글자 수로도 말합니다</h2>
+    <p class="body">
+      영어권 분석 도구는 이걸 못 읽습니다. 한국 사람은 전부 알지만
+      아무도 글로 적어두지 않은 눈금이라서요.
+    </p>
+
+    <div class="scale">
+      <div class="row"><b>ㅋ</b><span>차갑다. 할 말이 없다는 쪽에 가깝다</span></div>
+      <div class="row hot"><b>ㅋㅋ</b><span>영혼 없음. 대화를 접고 싶다는 신호로 읽힌다</span></div>
+      <div class="row"><b>ㅋㅋㅋ</b><span>중립. 여기가 기준선이다</span></div>
+      <div class="row"><b>ㅋㅋㅋㅋ</b><span>호응하고 있다</span></div>
+      <div class="row"><b>ㅎㅎ</b><span>두 개가 정상이다. ㅋㅋ와 다르게 읽어야 한다</span></div>
+      <div class="row"><b>넵 · 넹</b><span>'네'보다 친근하다</span></div>
+    </div>
+
+    <p class="note">
+      다만 눈금만 쓰면 틀립니다. 원래 모든 문장에 ㅋㅋ만 쓰는 사람이 있으니까요.
+      그래서 답톡은 그 사람의 대화 전체를 먼저 보고, 습관이면 눈금 해석을 내립니다.
+      <b>가장 단단한 신호는 둘이 겹치는 자리</b>입니다 — 쓰던 사람이 줄인 지점.
+    </p>
+
+    <div class="chat">
+      <div class="b them">야 아까 그 영상 봤어? 진짜 웃기다ㅋㅋㅋㅋㅋ</div>
+      <div class="b me">ㅋㅋㅋ 봤어 나도 아침에 보고 빵터짐</div>
+      <div class="b them">너 그런거 어디서 찾아오냐ㅋㅋㅋㅋ</div>
+      <div class="b me">아 맞다 우리 저번에 말한 그 전시 이번 주말에 끝난대 갈래?</div>
+      <div class="time">14분 뒤</div>
+      <div class="b them">아 그거ㅋㅋ</div>
+      <div class="b them">주말에 좀 바쁠듯</div>
+    </div>
+    <p class="note">
+      답톡은 여기서 <b>ㅋㅋㅋㅋ가 ㅋㅋ로 줄어든 지점</b>과
+      <b>답장이 1분에서 14분으로 늘어난 지점</b>이 같은 자리라는 것을 집어냅니다.
+      그 자리가 약속 이야기가 나온 직후라는 것도요.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">받는 것</div>
+    <h2>세 가지를 드립니다</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>상대의 상태</h3>
+        <p>"관심 있어 보여요"가 아니라, 대화의 <b>어느 문장</b>을 보고
+           그렇게 읽었는지 그대로 인용해서 보여드립니다.</p>
+      </div>
+      <div class="card">
+        <h3>멈춘 자리</h3>
+        <p>약속을 잡으려다 흐지부지됐는지, 답을 미루고 있는지,
+           그냥 바쁜 건지 짚어드립니다.</p>
+      </div>
+      <div class="card">
+        <h3>답장 세 가지</h3>
+        <p>더 다정한 것과 덜 다정한 것이 아닙니다. <b>접근 자체가 다른</b>
+           세 방향이고, 그대로 복사해서 보내실 수 있습니다.</p>
+      </div>
+    </div>
+    <p class="note">
+      답장은 <b>평소 쓰시던 길이와 말투</b>에 맞춥니다. 한 줄씩 보내는 분께
+      세 문장짜리 답장을 드리면 보낼 수 없는 문장이 되니까요.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">안 하는 것</div>
+    <h2>들키면 끝나는 것은 넣지 않았습니다</h2>
+    <ul class="plain">
+      <li><b>관심 있는 척하기</b> — 들키면 그걸로 끝나는 기법입니다</li>
+      <li><b>질투 유발, 일부러 늦게 답하기</b> — 상대를 조종하는 쪽입니다</li>
+      <li><b>MBTI 궁합표</b> — 유형 짝으로 관계를 예측한다는 연구가 없습니다.
+          적어주신 MBTI는 '어떻게 말을 걸지'를 고르는 데만 쓰고,
+          호감도는 대화에서만 읽습니다</li>
+      <li><b>점수만 던지기</b> — 숫자 옆에 항상 근거가 되는 문장을 같이 보여드립니다</li>
+    </ul>
+    <p class="note">
+      만들면서 뺀 것들을 적어두는 이유는, 이게 그냥 빠진 게 아니라
+      <b>넣지 않기로 판단한 것</b>이기 때문입니다.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">개인정보</div>
+    <h2>대화는 저장하지 않습니다</h2>
+    <ul class="plain">
+      <li>올리신 <b>캡처와 대화 내용은 분석이 끝나면 사라집니다.</b> 서버에 남지 않습니다</li>
+      <li>대화에서 읽은 <b>사람 이름은 결과에서 지웁니다</b> — 모델이 쓰지 않게 하는 게
+          아니라, 코드가 지웁니다</li>
+      <li>분석 <b>결과</b>만 다시 볼 수 있게 보관하고, 설정에서 언제든 직접 지우실 수 있습니다</li>
+      <li><b>가입이 없습니다.</b> 이메일도 전화번호도 받지 않습니다</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="eyebrow">지금 상태</div>
+    <h2>아직 출시 전입니다</h2>
+    <div class="status">
+      <h3>비공개 테스트 준비 중</h3>
+      <p>
+        구글플레이 심사 절차상 정식 출시 전에 테스터 모집 단계를 거칩니다.
+        결제는 아직 연결되지 않았고, <b>어떤 요금도 청구되지 않습니다.</b>
+        출시되면 하루 1회는 무료로 쓰실 수 있습니다.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="mailrow">
+      <span>문의</span>
+      <code class="mail" id="mail">kwangyunkeum@gmail.com</code>
+      <button class="copy" id="copyBtn" type="button">복사</button>
+    </div>
+    <div><a href="https://kwangyun.github.io/convo-coach-legal/">개인정보처리방침</a></div>
+    <div>&copy; 2026 답톡</div>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById("copyBtn");
+    var mail = document.getElementById("mail");
+    if (!btn || !mail) return;
+
+    function flash(word) {
+      btn.textContent = word;
+      setTimeout(function () { btn.textContent = "복사"; }, 1600);
+    }
+
+    btn.addEventListener("click", function () {
+      // 클립보드는 거절될 수 있다(구형 앱뷰, 권한 없음).
+      // 그때는 주소를 선택만 해준다 - 주소 자체는 이미 화면에 있으니
+      // 복사가 안 돼도 읽어갈 수 있다.
+      function select() {
+        var r = document.createRange();
+        r.selectNodeContents(mail);
+        var s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        flash("선택됨");
+      }
+      try {
+        navigator.clipboard.writeText(mail.textContent.trim()).then(
+          function () { flash("복사됨"); },
+          select
+        );
+      } catch (e) {
+        select();
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
